@@ -149,6 +149,18 @@ new = force_list(default=list('n'))
 # delete the currently selected event
 delete = force_list(default=list('d'))
 
+# increase the selected event's start and end times by one hour
+increase = force_list(default=list('a'))
+# increase the selected event's start and end times by one day
+increase_day = force_list(default=list('A'))
+# decrease the selected event's start and end times by one hour
+decrease = force_list(default=list('x'))
+# decrease the selected event's start and end times by one day
+decrease_day = force_list(default=list('X'))
+
+# refresh the view of the calendar from the database
+refresh = force_list(default=list('tab'))
+
 # show details or edit (if details are already shown) the currently selected event
 view = force_list(default=list('enter'))
 
