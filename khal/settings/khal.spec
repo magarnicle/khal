@@ -150,11 +150,11 @@ new = force_list(default=list('n'))
 delete = force_list(default=list('d'))
 
 # increase the selected event's start and end times by one hour
-increase = force_list(default=list('a'))
+increase = force_list(default=list('ctrl a'))
 # increase the selected event's start and end times by one day
 increase_day = force_list(default=list('A'))
 # decrease the selected event's start and end times by one hour
-decrease = force_list(default=list('x'))
+decrease = force_list(default=list('ctrl x'))
 # decrease the selected event's start and end times by one day
 decrease_day = force_list(default=list('X'))
 
