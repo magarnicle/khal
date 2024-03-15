@@ -74,6 +74,7 @@ logger = logging.getLogger("khal")
 
 ALL = 1
 INSTANCES = 2
+ACTION_COUNT = ""
 
 
 class DateConversionError(Exception):
@@ -991,39 +992,50 @@ class EventColumn(urwid.WidgetWrap):
         self._eventshown = False
         self.clear_event_view()
 
-        if key in self._conf["keybindings"]["new"]:
-            self.new(self.focus_date, None)
-            key = None
-        if key in self._conf["keybindings"]["refresh"]:
-            self.update(None, None, everything=True)
-            key = None
+        global ACTION_COUNT
+        if key in "0123456789":
+            if not ACTION_COUNT:
+                ACTION_COUNT = ""
+            ACTION_COUNT += key
+        else:
+            try:
+                action_count = int(ACTION_COUNT)
+            except ValueError:
+                action_count = 1
+            ACTION_COUNT = ""
+            if key in self._conf["keybindings"]["new"]:
+                self.new(self.focus_date, None)
+                key = None
+            if key in self._conf["keybindings"]["refresh"]:
+                self.update(None, None, everything=True)
+                key = None
 
-        if key in self._conf["keybindings"]["next"]:
-            key = "down"
-        elif key in self._conf["keybindings"]["previous"]:
-            key = "up"
-        if self.focus_event:
-            if key in self._conf["keybindings"]["delete"]:
-                self.toggle_delete()
+            if key in self._conf["keybindings"]["next"]:
                 key = "down"
-            elif key in self._conf["keybindings"]["duplicate"]:
-                self.duplicate()
-                key = None
-            elif key in self._conf["keybindings"]["export"]:
-                self.export_event()
-                key = None
-            elif key in self._conf["keybindings"]["increase"]:
-                self.quick_change_date(hours=1)
-                key = None
-            elif key in self._conf["keybindings"]["decrease"]:
-                self.quick_change_date(hours=-1)
-                key = None
-            elif key in self._conf["keybindings"]["increase_day"]:
-                self.quick_change_date(days=1)
-                key = None
-            elif key in self._conf["keybindings"]["decrease_day"]:
-                self.quick_change_date(days=-1)
-                key = None
+            elif key in self._conf["keybindings"]["previous"]:
+                key = "up"
+            if self.focus_event:
+                if key in self._conf["keybindings"]["delete"]:
+                    self.toggle_delete()
+                    key = "down"
+                elif key in self._conf["keybindings"]["duplicate"]:
+                    self.duplicate()
+                    key = None
+                elif key in self._conf["keybindings"]["export"]:
+                    self.export_event()
+                    key = None
+                elif key in self._conf["keybindings"]["increase"]:
+                    self.quick_change_date(hours=action_count)
+                    key = None
+                elif key in self._conf["keybindings"]["decrease"]:
+                    self.quick_change_date(hours=-action_count)
+                    key = None
+                elif key in self._conf["keybindings"]["increase_day"]:
+                    self.quick_change_date(days=action_count)
+                    key = None
+                elif key in self._conf["keybindings"]["decrease_day"]:
+                    self.quick_change_date(days=-action_count)
+                    key = None
 
         rval = super().keypress(size, key)
         if self.focus_event:
