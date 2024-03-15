@@ -998,6 +998,10 @@ class EventColumn(urwid.WidgetWrap):
             self.update(None, None, everything=True)
             key = None
 
+        if key in self._conf["keybindings"]["next"]:
+            key = "down"
+        elif key in self._conf["keybindings"]["previous"]:
+            key = "up"
         if self.focus_event:
             if key in self._conf["keybindings"]["delete"]:
                 self.toggle_delete()
