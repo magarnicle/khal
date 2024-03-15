@@ -75,6 +75,7 @@ logger = logging.getLogger("khal")
 ALL = 1
 INSTANCES = 2
 ACTION_COUNT = ""
+COUNT_START = None
 
 
 class DateConversionError(Exception):
@@ -992,9 +993,13 @@ class EventColumn(urwid.WidgetWrap):
         self._eventshown = False
         self.clear_event_view()
 
-        global ACTION_COUNT
+        global ACTION_COUNT, COUNT_START
+        if COUNT_START and (dt.datetime.now() - COUNT_START).total_seconds() > 3:
+            COUNT_START = None
+            ACTION_COUNT = ""
         if key in "0123456789":
             if not ACTION_COUNT:
+                COUNT_START = dt.datetime.now()
                 ACTION_COUNT = ""
             ACTION_COUNT += key
         else:
