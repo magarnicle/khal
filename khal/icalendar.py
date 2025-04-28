@@ -250,7 +250,7 @@ def expand(
         if allday and isinstance(date, dt.datetime):
             date = date.date()
         if events_tz is not None:
-            date = events_tz.localize(date)
+            date = date.astimezone(events_tz)
         return date
 
     rrule_param = vevent.get('RRULE')

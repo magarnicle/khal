@@ -148,11 +148,28 @@ right = force_list(default=list('right', 'l', ' '))
 # move the cursor left (in the calendar browser)
 left = force_list(default=list('left', 'h', 'backspace'))
 
+# move down in the event list
+next = force_list(default=list('ctrl n'))
+# move up in the event list
+previous = force_list(default=list('ctrl p'))
+
 # create a new event on the selected date
 new = force_list(default=list('n'))
 
 # delete the currently selected event
 delete = force_list(default=list('d'))
+
+# increase the selected event's start and end times by one hour
+increase = force_list(default=list('ctrl a'))
+# increase the selected event's start and end times by one day
+increase_day = force_list(default=list('A'))
+# decrease the selected event's start and end times by one hour
+decrease = force_list(default=list('ctrl x'))
+# decrease the selected event's start and end times by one day
+decrease_day = force_list(default=list('X'))
+
+# refresh the view of the calendar from the database
+refresh = force_list(default=list('tab'))
 
 # show details or edit (if details are already shown) the currently selected event
 view = force_list(default=list('enter'))
