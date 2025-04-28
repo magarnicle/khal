@@ -27,13 +27,18 @@ import re
 import textwrap
 from collections import OrderedDict, defaultdict
 from shutil import get_terminal_size
-from typing import List, Optional
+from typing import Callable, Optional
 
 import pytz
 from click import confirm, echo, prompt, style
 
-from khal import __productname__, __version__, calendar_display, parse_datetime, utils
-from khal.custom_types import EventCreationTypes, LocaleConfiguration
+from khal import __productname__, __version__, calendar_display, parse_datetime
+from khal.custom_types import (
+    EventCreationTypes,
+    LocaleConfiguration,
+    MonthDisplayType,
+    WeekNumbersType,
+)
 from khal.exceptions import DateTimeParseError, FatalError
 from khal.khalendar import CalendarCollection
 from khal.khalendar.event import Event
@@ -43,12 +48,14 @@ from .exceptions import ConfigurationError
 from .icalendar import cal_from_ics, split_ics
 from .icalendar import sort_key as sort_vevent_key
 from .khalendar.vdir import Item
+from .parse_datetime import timedelta2str
 from .terminal import merge_columns
+from .utils import human_formatter, json_formatter
 
 logger = logging.getLogger('khal')
 
 
-def format_day(day, format_string: str, locale, attributes=None):
+def format_day(day: dt.date, format_string: str, locale, attributes=None):
     if attributes is None:
         attributes = {}
 
@@ -68,23 +75,29 @@ def format_day(day, format_string: str, locale, attributes=None):
         raise KeyError("cannot format day with: %s" % format_string)
 
 
-def calendar(collection, agenda_format=None, notstarted=False, once=False, daterange=None,
-             day_format=None,
-             locale=None,
-             conf=None,
-             firstweekday=0,
-             weeknumber=False,
-             monthdisplay='firstday',
-             hmethod='fg',
-             default_color='',
-             multiple='',
-             multiple_on_overflow=False,
-             color='',
-             highlight_event_days=0,
-             full=False,
-             bold_for_light_color=True,
-             env=None,
-             ):
+def calendar(
+    collection: CalendarCollection,
+    agenda_format=None,
+    notstarted: bool=False,
+    once=False,
+    daterange=None,
+    day_format=None,
+    locale=None,
+    conf=None,
+    firstweekday: int=0,
+    weeknumber: WeekNumbersType=False,
+    monthdisplay: MonthDisplayType='firstday',
+    hmethod: str='fg',
+    default_color: str='',
+    multiple='',
+    multiple_on_overflow: bool=False,
+    color='',
+    highlight_event_days=0,
+    full=False,
+    bold_for_light_color: bool=True,
+    env=None,
+    ):
+
     term_width, _ = get_terminal_size()
     lwidth = 27 if conf['locale']['weeknumbers'] == 'right' else 25
     rwidth = term_width - lwidth - 4
@@ -111,10 +124,11 @@ def calendar(collection, agenda_format=None, notstarted=False, once=False, dater
     )
     if not event_column:
         event_column = [style('No events', bold=True)]
+    month_count = (end.year - start.year) * 12 + end.month - start.month + 1
     calendar_column = calendar_display.vertical_month(
         month=start.month,
         year=start.year,
-        count=max(3, (end.year - start.year) * 12 + end.month - start.month + 1),
+        count=max(conf['view']['min_calendar_display'], month_count),
         firstweekday=firstweekday, weeknumber=weeknumber,
         monthdisplay=monthdisplay,
         collection=collection,
@@ -130,7 +144,7 @@ def calendar(collection, agenda_format=None, notstarted=False, once=False, dater
 
 
 def start_end_from_daterange(
-    daterange: List[str],
+    daterange: list[str],
     locale: LocaleConfiguration,
     default_timedelta_date: dt.timedelta=dt.timedelta(days=1),
     default_timedelta_datetime: dt.timedelta=dt.timedelta(hours=1),
@@ -159,24 +173,27 @@ def get_events_between(
     locale: dict,
     start: dt.datetime,
     end: dt.datetime,
-    agenda_format: str,
+    formatter: Callable,
     notstarted: bool,
     env: dict,
-    width,
-    seen,
     original_start: dt.datetime,
-) -> List[str]:
+    seen=None,
+    colors: bool = True,
+) -> list[str]:
     """returns a list of events scheduled between start and end. Start and end
     are strings or datetimes (of some kind).
 
     :param collection:
+    :param locale:
     :param start: the start datetime
     :param end: the end datetime
-    :param agenda_format: a format string that can be used in python string formatting
-    :param env: a collection of "static" values like calendar names and color
+    :param formatter: the formatter (see :class:`.utils.human_formatter`)
     :param nostarted: True if each event should start after start (instead of
-    be active between start and end)
+      be active between start and end)
+    :param env: a collection of "static" values like calendar names and color
     :param original_start: start datetime to compare against of notstarted is set
+    :param seen:
+    :param colors:
     :returns: a list to be printed as the agenda for the given days
     """
     assert not (notstarted and not original_start)
@@ -207,31 +224,29 @@ def get_events_between(
             continue
 
         try:
-            event_string = event.format(agenda_format, relative_to=(start, end), env=env)
+            event_attributes = event.attributes(relative_to=(start, end), env=env, colors=colors)
         except KeyError as error:
             raise FatalError(error)
 
-        if width:
-            event_list += utils.color_wrap(event_string, width)
-        else:
-            event_list.append(event_string)
+        event_list.append(event_attributes)
         if seen is not None:
             seen.add(event.uid)
 
-    return event_list
+    return formatter(event_list)
 
 
 def khal_list(
     collection,
-    daterange: Optional[List[str]]=None,
+    daterange: Optional[list[str]] = None,
     conf: Optional[dict] = None,
     agenda_format=None,
     day_format: Optional[str]=None,
     once=False,
     notstarted: bool = False,
-    width: bool = False,
+    width: Optional[int] = None,
     env=None,
     datepoint=None,
+    json: Optional[list] = None,
 ):
     """returns a list of all events in `daterange`"""
     assert daterange is not None or datepoint is not None
@@ -240,6 +255,13 @@ def khal_list(
     # because empty strings are also Falsish
     if agenda_format is None:
         agenda_format = conf['view']['agenda_event_format']
+
+    if json:
+        formatter = json_formatter(json)
+        colors = False
+    else:
+        formatter = human_formatter(agenda_format, width)
+        colors = True
 
     if daterange is not None:
         if day_format is None:
@@ -273,7 +295,7 @@ def khal_list(
             )
         logger.debug(f'Getting all events between {start} and {end}')
 
-    event_column: List[str] = []
+    event_column: list[str] = []
     once = set() if once else None
     if env is None:
         env = {}
@@ -285,13 +307,13 @@ def khal_list(
         else:
             day_end = dt.datetime.combine(start.date(), dt.time.max)
         current_events = get_events_between(
-            collection, locale=conf['locale'], agenda_format=agenda_format, start=start,
+            collection, locale=conf['locale'], formatter=formatter, start=start,
             end=day_end, notstarted=notstarted, original_start=original_start,
             env=env,
             seen=once,
-            width=width,
+            colors=colors,
         )
-        if day_format and (conf['default']['show_all_days'] or current_events):
+        if day_format and (conf['default']['show_all_days'] or current_events) and not json:
             if len(event_column) != 0 and conf['view']['blank_line_before_day']:
                 event_column.append('')
             event_column.append(format_day(start.date(), day_format, conf['locale']))
@@ -303,13 +325,13 @@ def khal_list(
 
 def new_interactive(collection, calendar_name, conf, info, location=None,
                     categories=None, repeat=None, until=None, alarms=None,
-                    format=None, env=None, url=None):
+                    format=None, json=None, env=None, url=None):
     info: EventCreationTypes
     try:
         info = parse_datetime.eventinfofstr(
             info, conf['locale'],
-            conf['default']['default_event_duration'],
-            conf['default']['default_dayevent_duration'],
+            default_event_duration=conf['default']['default_event_duration'],
+            default_dayevent_duration=conf['default']['default_dayevent_duration'],
             adjust_reasonably=True,
         )
     except DateTimeParseError:
@@ -370,6 +392,7 @@ def new_interactive(collection, calendar_name, conf, info, location=None,
         format=format,
         env=env,
         calendar_name=calendar_name,
+        json=json,
     )
     echo("event saved")
 
@@ -379,7 +402,7 @@ def new_interactive(collection, calendar_name, conf, info, location=None,
 
 def new_from_string(collection, calendar_name, conf, info, location=None,
                     categories=None, repeat=None, until=None, alarms=None,
-                    url=None, format=None, env=None):
+                    url=None, format=None, json=None, env=None):
     """construct a new event from a string and add it"""
     info = parse_datetime.eventinfofstr(
         info, conf['locale'],
@@ -387,6 +410,11 @@ def new_from_string(collection, calendar_name, conf, info, location=None,
         conf['default']['default_dayevent_duration'],
         adjust_reasonably=True,
     )
+    if alarms is None:
+        if info['allday']:
+            alarms = timedelta2str(conf['default']['default_dayevent_alarm'])
+        else:
+            alarms = timedelta2str(conf['default']['default_event_alarm'])
     info.update({
         'location': location,
         'categories': categories,
@@ -395,7 +423,15 @@ def new_from_string(collection, calendar_name, conf, info, location=None,
         'alarms': alarms,
         'url': url,
     })
-    new_from_dict(info, collection, conf=conf, format=format, env=env, calendar_name=calendar_name)
+    new_from_dict(
+        info,
+        collection,
+        conf=conf,
+        format=format,
+        env=env,
+        calendar_name=calendar_name,
+        json=json,
+    )
 
 
 def new_from_dict(
@@ -405,6 +441,7 @@ def new_from_dict(
     calendar_name: Optional[str]=None,
     format=None,
     env=None,
+    json=None,
 ) -> Event:
     """Create a new event from arguments and save in vdirs
 
@@ -426,9 +463,13 @@ def new_from_dict(
         )
 
     if conf['default']['print_new'] == 'event':
-        if format is None:
-            format = conf['view']['event_format']
-        echo(event.format(format, dt.datetime.now(), env=env))
+        if json is None or len(json) == 0:
+            if format is None:
+                format = conf['view']['event_format']
+            formatter = human_formatter(format)
+        else:
+            formatter = json_formatter(json)
+        echo(formatter(event.attributes(dt.datetime.now(), env=env)))
     elif conf['default']['print_new'] == 'path':
         assert event.href
         path = os.path.join(collection._calendars[event.calendar]['path'], event.href)
@@ -493,7 +534,7 @@ def edit_event(event, collection, locale, allow_quit=False, width=80):
                 collection.delete(event.href, event.etag, event.calendar)
                 return True
         elif choice == "datetime range":
-            current = event.format("{start} {end}", relative_to=now)
+            current = human_formatter("{start} {end}")(event.attributes(relative_to=now))
             value = prompt("datetime range", default=current)
             try:
                 start, end, allday = parse_datetime.guessrangefstr(ansi.sub('', value), locale)
@@ -577,7 +618,8 @@ def edit(collection, search_string, locale, format=None, allow_past=False, conf=
                 continue
             elif not event.allday and event.end_local < now:
                 continue
-        event_text = textwrap.wrap(event.format(format, relative_to=now), term_width)
+        event_text = textwrap.wrap(human_formatter(format)(
+            event.attributes(relative_to=now)), term_width)
         echo(''.join(event_text))
         if not edit_event(event, collection, locale, allow_quit=True, width=term_width):
             return
@@ -629,7 +671,7 @@ def import_event(vevent, collection, locale, batch, format=None, env=None):
             if item.name == 'VEVENT':
                 event = Event.fromVEvents(
                     [item], calendar=collection.default_calendar_name, locale=locale)
-                echo(event.format(format, dt.datetime.now(), env=env))
+                echo(human_formatter(format)(event.attributes(dt.datetime.now(), env=env)))
 
     # get the calendar to insert into
     if not collection.writable_names:
@@ -686,4 +728,4 @@ def print_ics(conf, name, ics, format):
     echo(f'{len(vevents)} events found in {name}')
     for sub_event in vevents:
         event = Event.fromVEvents(sub_event, locale=conf['locale'])
-        echo(event.format(format, dt.datetime.now()))
+        echo(human_formatter(format)(event.attributes(dt.datetime.now())))

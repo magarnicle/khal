@@ -24,11 +24,12 @@ dark = [
     ('header', 'white', 'black'),
     ('footer', 'white', 'black'),
     ('line header', 'black', 'white', 'bold'),
-    ('bright', 'dark blue', 'white', ('bold', 'standout')),
+    ('alt header', 'white', '', 'bold'),
+    ('bright', 'dark blue', 'white', 'bold,standout'),
     ('list', 'black', 'white'),
     ('list focused', 'white', 'light blue', 'bold'),
     ('edit', 'black', 'white'),
-    ('edit focused', 'white', 'light blue', 'bold'),
+    ('edit focus', 'white', 'light blue', 'bold'),
     ('button', 'black', 'dark cyan'),
     ('button focused', 'white', 'light blue', 'bold'),
 
@@ -43,7 +44,6 @@ dark = [
     ('dayname', 'light gray', ''),
     ('monthname', 'light gray', ''),
     ('weeknumber_right', 'light gray', ''),
-    ('edit', 'white', 'dark blue'),
     ('alert', 'white', 'dark red'),
     ('mark', 'white', 'dark green'),
     ('frame', 'white', 'black'),
@@ -51,19 +51,27 @@ dark = [
     ('frame focus color', 'dark blue', 'black'),
     ('frame focus top', 'dark magenta', 'black'),
 
+    ('eventcolumn', '', '', ''),
+    ('eventcolumn focus', '', '', ''),
+    ('calendar', '', '', ''),
+    ('calendar focus', '', '', ''),
+
     ('editbx', 'light gray', 'dark blue'),
     ('editcp', 'black', 'light gray', 'standout'),
     ('popupbg', 'white', 'black', 'bold'),
+    ('popupper', 'white', 'dark cyan'),
+    ('caption', 'white', '', 'bold'),
 ]
 light = [
     ('header', 'black', 'white'),
     ('footer', 'black', 'white'),
     ('line header', 'black', 'white', 'bold'),
-    ('bright', 'dark blue', 'white', ('bold', 'standout')),
+    ('alt header', 'black', '', 'bold'),
+    ('bright', 'dark blue', 'white', 'bold,standout'),
     ('list', 'black', 'white'),
     ('list focused', 'white', 'light blue', 'bold'),
     ('edit', 'black', 'white'),
-    ('edit focused', 'white', 'light blue', 'bold'),
+    ('edit focus', 'white', 'light blue', 'bold'),
     ('button', 'black', 'dark cyan'),
     ('button focused', 'white', 'light blue', 'bold'),
 
@@ -72,13 +80,12 @@ light = [
     ('today', 'black', 'light gray'),
 
     ('date header', '', 'white'),
-    ('date header focused', 'white', 'dark gray', ('bold', 'standout')),
+    ('date header focused', 'white', 'dark gray', 'bold,standout'),
     ('date header selected', 'dark gray', 'light cyan'),
 
     ('dayname', 'dark gray', 'white'),
     ('monthname', 'dark gray', 'white'),
     ('weeknumber_right', 'dark gray', 'white'),
-    ('edit', 'white', 'dark blue'),
     ('alert', 'white', 'dark red'),
     ('mark', 'white', 'dark green'),
     ('frame', 'dark gray', 'white'),
@@ -86,7 +93,16 @@ light = [
     ('frame focus color', 'dark blue', 'white'),
     ('frame focus top', 'dark magenta', 'white'),
 
+    ('eventcolumn', '', '', ''),
+    ('eventcolumn focus', '', '', ''),
+    ('calendar', '', '', ''),
+    ('calendar focus', '', '', ''),
+
     ('editbx', 'light gray', 'dark blue'),
     ('editcp', 'black', 'light gray', 'standout'),
     ('popupbg', 'white', 'black', 'bold'),
+    ('popupper', 'black', 'light gray'),
+    ('caption', 'black', '', ''),
 ]
+
+themes: dict[str, list[tuple[str, ...]]] = {'light': light, 'dark': dark}

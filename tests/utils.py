@@ -1,13 +1,13 @@
 import os
-from typing import Dict, Tuple
 
 import icalendar
 import pytz
 
+from khal.custom_types import LocaleConfiguration
 from khal.khalendar import CalendarCollection
 from khal.khalendar.vdir import Vdir
 
-CollVdirType = Tuple[CalendarCollection, Dict[str, Vdir]]
+CollVdirType = tuple[CalendarCollection, dict[str, Vdir]]
 
 cal0 = 'a_calendar'
 cal1 = 'foobar'
@@ -26,7 +26,7 @@ GMTPLUS3 = pytz.timezone('Etc/GMT+3')
 BOGOTA = pytz.timezone('America/Bogota')
 
 
-LOCALE_BERLIN = {
+LOCALE_BERLIN: LocaleConfiguration = {
     'default_timezone': BERLIN,
     'local_timezone': BERLIN,
     'dateformat': '%d.%m.',
@@ -39,7 +39,7 @@ LOCALE_BERLIN = {
     'weeknumbers': False,
 }
 
-LOCALE_NEW_YORK = {
+LOCALE_NEW_YORK: LocaleConfiguration = {
     'default_timezone': NEW_YORK,
     'local_timezone': NEW_YORK,
     'timeformat': '%H:%M',
@@ -134,7 +134,7 @@ def _replace_uid(event):
     return event
 
 
-class DumbItem():
-    def __init__(self, raw, uid):
+class DumbItem:
+    def __init__(self, raw, uid) -> None:
         self.raw = raw
         self.uid = uid

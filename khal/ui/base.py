@@ -23,9 +23,12 @@
 """this module should contain classes that are specific to ikhal, more
 general widgets should go in widgets.py"""
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
+from typing import Callable
 
 import urwid
 
@@ -38,7 +41,7 @@ class Pane(urwid.WidgetWrap):
 
     """An abstract Pane to be used in a Window object."""
 
-    def __init__(self, widget, title=None, description=None):
+    def __init__(self, widget, title=None, description=None) -> None:
         self.widget = widget
         urwid.WidgetWrap.__init__(self, widget)
         self._title = title or ''
@@ -57,14 +60,12 @@ class Pane(urwid.WidgetWrap):
     def description(self):
         return self._description
 
-    def dialog(self, text, buttons):
+    def dialog(self, text: str, buttons: list[tuple[str, Callable]]) -> None:
         """Open a dialog box.
 
         :param text: Text to appear as the body of the Dialog box
-        :type text: str
         :param buttons: list of tuples button labels and functions to call
             when the button is pressed
-        :type buttons: list(str, callable)
         """
         lines = [urwid.Text(line) for line in text.splitlines()]
 
@@ -75,18 +76,23 @@ class Pane(urwid.WidgetWrap):
         lines.append(buttons)
         content = urwid.LineBox(urwid.Pile(lines))
         overlay = urwid.Overlay(content, self, 'center', ('relative', 70), ('relative', 70), None)
+        assert self.window is not None
         self.window.open(overlay)
 
-    def scrollable_dialog(self, text, buttons=None, title="Press `ESC` to close this window"):
+    def scrollable_dialog(self,
+                          text: str | list[urwid.Text],
+                          buttons: list[tuple[str, Callable]] | None = None,
+                          title: str = "Press `ESC` to close this window",
+                          ) -> None:
         """Open a scrollable dialog box.
 
         :param text: Text to appear as the body of the Dialog box
-        :type text: str
-        :param buttons: list of tuples of button labels and functions to call
-            when the button is pressed
-        :type buttons: list(str, callable)
+        :param buttons: button labels and functions to call when the button is pressed
         """
-        body = urwid.ListBox([urwid.Text(line) for line in text.splitlines()])
+        if isinstance(text, str):
+            body = urwid.ListBox([urwid.Text(line) for line in text.splitlines()])
+        else:
+            body = urwid.ListBox(text)
         if buttons:
             buttons = NColumns(
                 [urwid.Button(label, on_press=func) for label, func in buttons],
@@ -102,6 +108,7 @@ class Pane(urwid.WidgetWrap):
         )
         overlay = urwid.Overlay(
             over, self, 'center', ('relative', 70), 'middle', ('relative', 70), None)
+        assert self.window is not None
         self.window.open(overlay)
 
     def keypress(self, size, key):
@@ -115,12 +122,11 @@ class Pane(urwid.WidgetWrap):
 
     def show_keybindings(self):
         lines = []
-        lines.append('  Command              Keys')
-        lines.append('  =======              ====')
+        lines.append(urwid.AttrMap(urwid.Text('  Command              Keys'), 'alt header'))
         for command, keys in self._conf['keybindings'].items():
-            lines.append(f'  {command:20} {keys}')
+            lines.append(urwid.Text(f'  {command:20} {", ".join(keys)}'))
         self.scrollable_dialog(
-            '\n'.join(lines),
+            lines,
             title="Press `ESC` to close this window, arrows to scroll",
         )
 
@@ -144,9 +150,9 @@ class Window(urwid.Frame):
     to carry data between them.
     """
 
-    def __init__(self, footer='', quit_keys=None):
+    def __init__(self, footer='', quit_keys=None) -> None:
         quit_keys = quit_keys or ['q']
-        self._track = []
+        self._track: list[urwid.Overlay] = []
 
         header = urwid.AttrWrap(urwid.Text(''), 'header')
         footer = urwid.AttrWrap(urwid.Text(footer), 'footer')
@@ -163,7 +169,7 @@ class Window(urwid.Frame):
         self._alert_daemon.start()
         self.alert = self._alert_daemon.alert
         self.loop = None
-        self._log = []
+        self._log: list[str] = []
         self._header_is_warning = False
 
     def open(self, pane, callback=None):
@@ -211,7 +217,7 @@ class Window(urwid.Frame):
         self.set_body(pane)
         self.clear_header()
 
-    def log(self, record):
+    def log(self, record: str):
         self._log.append(record)
 
     def _get_current_pane(self):
@@ -244,7 +250,7 @@ class Window(urwid.Frame):
 
 
 class AlertDaemon(threading.Thread):
-    def __init__(self, set_msg_func):
+    def __init__(self, set_msg_func) -> None:
         threading.Thread.__init__(self)
         self._set_msg_func = set_msg_func
         self.daemon = True

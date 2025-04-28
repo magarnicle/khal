@@ -25,7 +25,7 @@ helper functions."""
 import datetime as dt
 import logging
 import os
-from typing import Dict, List, Optional, Type, Union
+from typing import Callable, Optional, Union
 
 import icalendar
 import icalendar.cal
@@ -38,7 +38,7 @@ from ..custom_types import LocaleConfiguration
 from ..exceptions import FatalError
 from ..icalendar import cal_from_ics, delete_instance, invalid_timezone
 from ..parse_datetime import timedelta2str
-from ..terminal import get_color
+from ..plugins import FORMATTERS
 from ..utils import generate_random_uid, is_aware, to_naive_utc, to_unix_time
 
 logger = logging.getLogger('khal')
@@ -59,7 +59,7 @@ class Event:
     allday: bool = False
 
     def __init__(self,
-                 vevents: Dict[str, icalendar.Event],
+                 vevents: dict[str, icalendar.Event],
                  locale: LocaleConfiguration,
                  ref: Optional[str] = None,
                  readonly: bool = False,
@@ -69,6 +69,7 @@ class Event:
                  color: Optional[str] = None,
                  start: Optional[dt.datetime] = None,
                  end: Optional[dt.datetime] = None,
+                 addresses: Optional[list[str]] =None,
                  ):
         """
         :param start: start datetime of this event instance
@@ -88,6 +89,7 @@ class Event:
         self.color = color
         self._start: dt.datetime
         self._end: dt.datetime
+        self.addresses = addresses if addresses else []
 
         if start is None:
             self._start = self._vevents[self.ref]['DTSTART'].dt
@@ -114,7 +116,7 @@ class Event:
         return FloatingEvent
 
     @classmethod
-    def _get_type_from_date(cls, start: dt.datetime) -> Type['Event']:
+    def _get_type_from_date(cls, start: dt.datetime) -> type['Event']:
         if hasattr(start, 'tzinfo') and start.tzinfo is not None:
             cls = LocalizedEvent
         elif isinstance(start, dt.datetime):
@@ -125,7 +127,7 @@ class Event:
 
     @classmethod
     def fromVEvents(cls,
-                    events_list: List[icalendar.Event],
+                    events_list: list[icalendar.Event],
                     ref: Optional[str]=None,
                     start: Optional[dt.datetime]=None,
                     **kwargs) -> 'Event':
@@ -267,7 +269,7 @@ class Event:
         if self.ref == 'PROTO':
             return self.start
         else:
-            return pytz.UTC.localize(dt.datetime.utcfromtimestamp(int(self.ref)))
+            return dt.datetime.fromtimestamp(int(self.ref), pytz.UTC)
 
     def increment_sequence(self) -> None:
         """update the SEQUENCE number, call before saving this event"""
@@ -279,7 +281,7 @@ class Event:
             self._vevents[self.ref]['SEQUENCE'] = 0
 
     @property
-    def symbol_strings(self) -> Dict[str, str]:
+    def symbol_strings(self) -> dict[str, str]:
         if self._locale['unicode_symbols']:
             return {
                 'recurring': '\N{Clockwise gapped circle arrow}',
@@ -287,7 +289,12 @@ class Event:
                 'range': '\N{Left right arrow}',
                 'range_end': '\N{Rightwards arrow to bar}',
                 'range_start': '\N{Rightwards arrow from bar}',
-                'right_arrow': '\N{Rightwards arrow}'
+                'right_arrow': '\N{Rightwards arrow}',
+                'cancelled': '\N{Cross mark}',
+                'confirmed': '\N{Heavy check mark}',
+                'tentative': '?',
+                'declined': '\N{Cross mark}',
+                'accepted': '\N{Heavy check mark}',
             }
         else:
             return {
@@ -296,7 +303,12 @@ class Event:
                 'range': '<->',
                 'range_end': '->|',
                 'range_start': '|->',
-                'right_arrow': '->'
+                'right_arrow': '->',
+                'cancelled': 'X',
+                'confirmed': 'V',
+                'tentative': '?',
+                'declined': 'X',
+                'accepted': 'V',
             }
 
     @property
@@ -426,9 +438,7 @@ class Event:
                 suffix = 'rd'
             else:
                 suffix = 'th'
-            return '{name}\'s {number}{suffix} {desc}{leap}'.format(
-                name=name, number=number, suffix=suffix, desc=description, leap=leap,
-            )
+            return f'{name}\'s {number}{suffix} {description}{leap}'
         else:
             return self._vevents[self.ref].get('SUMMARY', '')
 
@@ -444,7 +454,7 @@ class Event:
             isinstance(alarm.get('TRIGGER').dt, dt.timedelta)
 
     @property
-    def alarms(self):
+    def alarms(self) -> list[tuple[dt.timedelta, str]]:
         """
         Returns a list of all alarms in th original event that we can handle. Unknown types of
         alarms are ignored.
@@ -453,7 +463,7 @@ class Event:
                 for a in self._vevents[self.ref].subcomponents
                 if a.name == 'VALARM' and self._can_handle_alarm(a)]
 
-    def update_alarms(self, alarms):
+    def update_alarms(self, alarms: list[tuple[dt.timedelta, str]]) -> None:
         """
         Replaces all alarms in the event that can be handled with the ones provided.
         """
@@ -488,7 +498,7 @@ class Event:
         return ", ".join([address.split(':')[-1]
                           for address in addresses])
 
-    def update_attendees(self, attendees: List[str]):
+    def update_attendees(self, attendees: list[str]):
         assert isinstance(attendees, list)
         attendees = [a.strip().lower() for a in attendees if a != ""]
         if len(attendees) > 0:
@@ -524,8 +534,9 @@ class Event:
         except AttributeError:
             return ''
 
-    def update_categories(self, categories: List[str]) -> None:
+    def update_categories(self, categories: list[str]) -> None:
         assert isinstance(categories, list)
+        categories = [c.strip() for c in categories if c != ""]
         self._vevents[self.ref].pop('CATEGORIES', False)
         if categories:
             self._vevents[self.ref].add('CATEGORIES', categories)
@@ -534,7 +545,7 @@ class Event:
     def description(self) -> str:
         return self._vevents[self.ref].get('DESCRIPTION', '')
 
-    def update_description(self, description):
+    def update_description(self, description: str):
         if description:
             self._vevents[self.ref]['DESCRIPTION'] = description
         else:
@@ -556,17 +567,46 @@ class Event:
             alarmstr = ''
         return alarmstr
 
-    def format(self, format_string: str, relative_to, env=None, colors: bool=True):
+    @property
+    def _status_str(self) -> str:
+        if self.status == 'CANCELLED':
+            statusstr = self.symbol_strings['cancelled']
+        elif self.status == 'TENTATIVE':
+            statusstr = self.symbol_strings['tentative']
+        elif self.status == 'CONFIRMED':
+            statusstr = self.symbol_strings['confirmed']
+        else:
+            statusstr = ''
+        return statusstr
+
+    @property
+    def _partstat_str(self) -> str:
+        partstat = self.partstat
+        if partstat == 'ACCEPTED':
+            partstatstr = self.symbol_strings['accepted']
+        elif partstat == 'TENTATIVE':
+            partstatstr = self.symbol_strings['tentative']
+        elif partstat == 'DECLINED':
+            partstatstr = self.symbol_strings['declined']
+        else:
+            partstatstr = ''
+        return partstatstr
+
+    def attributes(
+            self,
+            relative_to: Union[tuple[dt.date, dt.date], dt.date],
+            env=None,
+            colors: bool=True,
+    ):
         """
         :param colors: determines if colors codes should be printed or not
-        :type colors: bool
         """
         env = env or {}
 
         attributes = {}
-        try:
+        if isinstance(relative_to, tuple):
             relative_to_start, relative_to_end = relative_to
-        except TypeError:
+        else:
             relative_to_start = relative_to_end = relative_to
 
         if isinstance(relative_to_end, dt.datetime):
@@ -682,9 +722,18 @@ class Event:
         attributes["repeat-symbol"] = self._recur_str
         attributes["repeat-pattern"] = self.recurpattern
         attributes["alarm-symbol"] = self._alarm_str
+        attributes["status-symbol"] = self._status_str
+        attributes["partstat-symbol"] = self._partstat_str
         attributes["title"] = self.summary
         attributes["organizer"] = self.organizer.strip()
-        attributes["description"] = self.description.strip()
+
+        formatters = FORMATTERS.values()
+        if len(formatters) == 1:
+            fmt: Callable[[str], str] = list(formatters)[0]
+        else:
+            def fmt(s: str) -> str: return s.strip()
+
+        attributes["description"] = fmt(self.description)
         attributes["description-separator"] = ""
         if attributes["description"]:
             attributes["description-separator"] = " :: "
@@ -694,10 +743,13 @@ class Event:
         attributes["categories"] = self.categories
         attributes['uid'] = self.uid
         attributes['url'] = self.url
+        attributes['url-separator'] = ""
+        if attributes['url']:
+            attributes['url-separator'] = " :: "
 
         if "calendars" in env and self.calendar in env["calendars"]:
             cal = env["calendars"][self.calendar]
-            attributes["calendar-color"] = get_color(cal.get('color', ''))
+            attributes["calendar-color"] = cal.get('color', '')
             attributes["calendar"] = cal.get("displayname", self.calendar)
         else:
             attributes["calendar-color"] = attributes["calendar"] = ''
@@ -720,7 +772,7 @@ class Event:
 
         attributes['status'] = self.status + ' ' if self.status else ''
         attributes['cancelled'] = 'CANCELLED ' if self.status == 'CANCELLED' else ''
-        return format_string.format(**dict(attributes)) + attributes["reset"]
+        return attributes
 
     def duplicate(self) -> 'Event':
         """duplicate this event's PROTO event"""
@@ -761,6 +813,14 @@ class Event:
     def status(self) -> str:
         return self._vevents[self.ref].get('STATUS', '')
 
+    @property
+    def partstat(self) -> Optional[str]:
+        for attendee in self._vevents[self.ref].get('ATTENDEE', []):
+            for address in self.addresses:
+                if attendee == 'mailto:' + address:
+                    return attendee.params.get('PARTSTAT', '')
+        return None
+
 
 class DatetimeEvent(Event):
     pass
@@ -771,7 +831,7 @@ class LocalizedEvent(DatetimeEvent):
     see parent
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         try:
             starttz = getattr(self._vevents[self.ref]['DTSTART'].dt, 'tzinfo', None)
@@ -919,7 +979,7 @@ def create_timezone(
             last_num = num
             last_tt = transtime
 
-    timezones: Dict[str, icalendar.Component] = {}
+    timezones: dict[str, icalendar.Component] = {}
     for num in range(first_num, last_num + 1):
         name = tz._transition_info[num][2]  # type: ignore
         if name in timezones:

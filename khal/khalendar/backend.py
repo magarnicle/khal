@@ -26,9 +26,10 @@ import contextlib
 import datetime as dt
 import logging
 import sqlite3
+from collections.abc import Iterable, Iterator
 from enum import IntEnum
 from os import makedirs, path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import icalendar
 import icalendar.cal
@@ -36,7 +37,7 @@ import pytz
 from dateutil import parser
 
 from .. import utils
-from ..custom_types import EventTuple
+from ..custom_types import EventTuple, LocaleConfiguration
 from ..icalendar import assert_only_one_uid, cal_from_ics
 from ..icalendar import expand as expand_vevent
 from ..icalendar import sanitize as sanitize_vevent
@@ -75,10 +76,10 @@ class SQLiteDb:
     def __init__(self,
                  calendars: Iterable[str],
                  db_path: Optional[str],
-                 locale: Dict[str, str],
+                 locale: LocaleConfiguration,
                  ) -> None:
         assert db_path is not None
-        self.calendars: List[str] = list(calendars)
+        self.calendars: list[str] = list(calendars)
         self.db_path = path.expanduser(db_path)
         self._create_dbdir()
         self.locale = locale
@@ -189,7 +190,7 @@ class SQLiteDb:
                 stuple = (cal, '')
                 self.sql_ex(sql_s, stuple)
 
-    def sql_ex(self, statement: str, stuple: tuple) -> List:
+    def sql_ex(self, statement: str, stuple: tuple) -> list:
         """wrapper for sql statements, does a "fetchall" """
         self.cursor.execute(statement, stuple)
         result = self.cursor.fetchall()
@@ -329,8 +330,8 @@ class SQLiteDb:
                     self.sql_ex(sql_s, stuple)
                 except sqlite3.IntegrityError as error:
                     raise UpdateFailed('Database integrity error creating birthday event '
-                                       'on {} for contact {} (UID: {}): '
-                                       '{}'.format(date, name, uuid, error))
+                                       f'on {date} for contact {name} (UID: {uuid}): '
+                                       f'{error}')
 
     def _update_impl(self, vevent: icalendar.cal.Event, href: str, calendar: str) -> None:
         """insert `vevent` into the database
@@ -459,7 +460,7 @@ class SQLiteDb:
         sql_s = 'DELETE FROM events WHERE href LIKE ? AND calendar = ?;'
         self.sql_ex(sql_s, (href, calendar))
 
-    def list(self, calendar: str) -> List[Tuple[str, str]]:
+    def list(self, calendar: str) -> list[tuple[str, str]]:
         """ list all events in `calendar`
 
         used for testing
@@ -514,8 +515,8 @@ class SQLiteDb:
         ) + tuple(self.calendars)
         result = self.sql_ex(sql_s, stuple)
         for item, href, start_timestamp, end_timestamp, ref, etag, _dtype, calendar in result:
-            start = pytz.UTC.localize(dt.datetime.utcfromtimestamp(start_timestamp))
-            end = pytz.UTC.localize(dt.datetime.utcfromtimestamp(end_timestamp))
+            start = dt.datetime.fromtimestamp(start_timestamp, pytz.UTC)
+            end = dt.datetime.fromtimestamp(end_timestamp, pytz.UTC)
             yield item, href, start, end, ref, etag, calendar
 
     def get_floating_calendars(self, start: dt.datetime, end: dt.datetime) -> Iterable[str]:
@@ -560,8 +561,8 @@ class SQLiteDb:
             [start_u, end_u, start_u, end_u, start_u, end_u] + list(self.calendars))  # type: ignore
         result = self.sql_ex(sql_s.format(','.join(["?"] * len(self.calendars))), stuple)
         for item, href, start_s, end_s, ref, etag, dtype, calendar in result:
-            start_dt = dt.datetime.utcfromtimestamp(start_s)
-            end_dt = dt.datetime.utcfromtimestamp(end_s)
+            start_dt = dt.datetime.fromtimestamp(start_s, pytz.UTC).replace(tzinfo=None)
+            end_dt = dt.datetime.fromtimestamp(end_s, pytz.UTC).replace(tzinfo=None)
             if dtype == EventType.DATE:
                 start_dt = start_dt.date()
                 end_dt = end_dt.date()
@@ -574,7 +575,7 @@ class SQLiteDb:
         item, etag = self.sql_ex(sql_s, (href, calendar))[0]
         return item
 
-    def get_with_etag(self, href: str, calendar: str) -> Tuple[str, str]:
+    def get_with_etag(self, href: str, calendar: str) -> tuple[str, str]:
         """returns the ical string and its etag matching href and calendar"""
         assert calendar is not None
         sql_s = 'SELECT item, etag FROM events WHERE href = ? AND calendar = ?;'
@@ -582,7 +583,7 @@ class SQLiteDb:
         return item, etag
 
     def search(self, search_string: str) \
-            -> Iterable[Tuple[str, str, dt.date, dt.date, str, str, str]]:
+            -> Iterable[tuple[str, str, dt.date, dt.date, str, str, str]]:
         """search for events matching `search_string`"""
         sql_s = (
             'SELECT item, recs_loc.href, dtstart, dtend, ref, etag, dtype, events.calendar '
@@ -594,8 +595,8 @@ class SQLiteDb:
         stuple = tuple([f'%{search_string}%'] + list(self.calendars))
         result = self.sql_ex(sql_s.format(','.join(["?"] * len(self.calendars))), stuple)
         for item, href, start, end, ref, etag, dtype, calendar in result:
-            start = pytz.UTC.localize(dt.datetime.utcfromtimestamp(start))
-            end = pytz.UTC.localize(dt.datetime.utcfromtimestamp(end))
+            start = dt.datetime.fromtimestamp(start, pytz.UTC)
+            end = dt.datetime.fromtimestamp(end, pytz.UTC)
             if dtype == EventType.DATE:
                 start = start.date()
                 end = end.date()
@@ -611,8 +612,8 @@ class SQLiteDb:
         stuple = tuple([f'%{search_string}%'] + list(self.calendars))
         result = self.sql_ex(sql_s.format(','.join(["?"] * len(self.calendars))), stuple)
         for item, href, start, end, ref, etag, dtype, calendar in result:
-            start = dt.datetime.utcfromtimestamp(start)
-            end = dt.datetime.utcfromtimestamp(end)
+            start = dt.datetime.fromtimestamp(start, pytz.UTC).replace(tzinfo=None)
+            end = dt.datetime.fromtimestamp(end, pytz.UTC).replace(tzinfo=None)
             if dtype == EventType.DATE:
                 start = start.date()
                 end = end.date()
@@ -655,7 +656,7 @@ def check_for_errors(component: icalendar.cal.Component, calendar: str, href: st
         logger.error('This might lead to this event being shown wrongly or not at all.')
 
 
-def calc_shift_deltas(vevent: icalendar.Event) -> Tuple[dt.timedelta, dt.timedelta]:
+def calc_shift_deltas(vevent: icalendar.Event) -> tuple[dt.timedelta, dt.timedelta]:
     """calculate an event's duration and by how much its start time has shifted
     versus its recurrence-id time
 

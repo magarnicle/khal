@@ -25,26 +25,29 @@ import datetime as dt
 import logging
 from collections import defaultdict
 from hashlib import sha256
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import dateutil.rrule
 import icalendar
 import pytz
 
 from .exceptions import UnsupportedRecurrence
-from .parse_datetime import guesstimedeltafstr, rrulefstr
-from .utils import generate_random_uid, localize_strip_tz, to_unix_time
+from .parse_datetime import rrulefstr
+from .utils import generate_random_uid, localize_strip_tz, str2alarm, to_unix_time
 
 logger = logging.getLogger('khal')
 
+# Force use of pytz because we rely on functionalities not available in
+# zoneinfo.
+icalendar.use_pytz()
 
-def split_ics(ics: str, random_uid: bool=False, default_timezone=None):
+
+def split_ics(ics: str, random_uid: bool=False, default_timezone=None) -> list:
     """split an ics string into several according to VEVENT's UIDs
 
     and sort the right VTIMEZONEs accordingly
     ignores all other ics components
     :param random_uid: assign random uids to all events
-    :rtype list:
     """
     cal = cal_from_ics(ics)
     tzs = {}
@@ -56,8 +59,8 @@ def split_ics(ics: str, random_uid: bool=False, default_timezone=None):
         # Standard Time' for 'Pacific/Auckland' in Olson format), we convert any
         # Windows format timezones to Olson.
         if item.name == 'VTIMEZONE':
-            if item['TZID'] in icalendar.windows_to_olson.WINDOWS_TO_OLSON:
-                key = icalendar.windows_to_olson.WINDOWS_TO_OLSON[item['TZID']]
+            if item['TZID'] in icalendar.timezone.windows_to_olson.WINDOWS_TO_OLSON:
+                key = icalendar.timezone.windows_to_olson.WINDOWS_TO_OLSON[item['TZID']]
             else:
                 key = item['TZID']
             tzs[key] = item
@@ -95,7 +98,7 @@ def new_vevent(locale,
                allday: bool=False,
                description: Optional[str]=None,
                location: Optional[str]=None,
-               categories: Optional[Union[List[str], str]]=None,
+               categories: Optional[Union[list[str], str]]=None,
                repeat: Optional[str]=None,
                until=None,
                alarms: Optional[str]=None,
@@ -140,19 +143,13 @@ def new_vevent(locale,
         rrule = rrulefstr(repeat, until, locale, getattr(dtstart, 'tzinfo', None))
         event.add('rrule', rrule)
     if alarms:
-        for alarm in alarms.split(","):
-            alarm = alarm.strip()
-            alarm_trig = -1 * guesstimedeltafstr(alarm)
-            new_alarm = icalendar.Alarm()
-            new_alarm.add('ACTION', 'DISPLAY')
-            new_alarm.add('TRIGGER', alarm_trig)
-            new_alarm.add('DESCRIPTION', description)
-            event.add_component(new_alarm)
+        for alarm in str2alarm(alarms, description or ''):
+            event.add_component(alarm)
     return event
 
 
 def ics_from_list(
-    events: List[icalendar.Event],
+    events: list[icalendar.Event],
     tzs,
     random_uid: bool=False,
     default_timezone=None
@@ -217,7 +214,10 @@ def ics_from_list(
     return calendar.to_ical().decode('utf-8')
 
 
-def expand(vevent, href=''):
+def expand(
+    vevent: icalendar.Event,
+    href: str='',
+) -> Optional[list[tuple[dt.datetime, dt.datetime]]]:
     """
     Constructs a list of start and end dates for all recurring instances of the
     event defined in vevent.
@@ -229,12 +229,9 @@ def expand(vevent, href=''):
     the function still returns a tuple of start and end (date)times.
 
     :param vevent: vevent to be expanded
-    :type vevent: icalendar.cal.Event
     :param href: the href of the vevent, used for more informative logging and
                  nothing else
-    :type href: str
     :returns: list of start and end (date)times of the expanded event
-    :rtype: list(tuple(datetime, datetime))
     """
     # we do this now and than never care about the "real" end time again
     if 'DURATION' in vevent:
@@ -249,7 +246,7 @@ def expand(vevent, href=''):
     events_tz = getattr(vevent['DTSTART'].dt, 'tzinfo', None)
     allday = not isinstance(vevent['DTSTART'].dt, dt.datetime)
 
-    def sanitize_datetime(date):
+    def sanitize_datetime(date: dt.date) -> dt.date:
         if allday and isinstance(date, dt.datetime):
             date = date.date()
         if events_tz is not None:
@@ -274,20 +271,24 @@ def expand(vevent, href=''):
             ignoretz=True,
         )
 
-        if rrule._until is None:
+        # telling mypy, that _until exists
+        # we are very sure (TM) that rrulestr always returns a rrule, not a
+        # rruleset (which wouldn't have a _until attribute)
+        if rrule._until is None:  # type: ignore
             # rrule really doesn't like to calculate all recurrences until
             # eternity, so we only do it until 2037, because a) I'm not sure
             # if python can deal with larger datetime values yet and b) pytz
             # doesn't know any larger transition times
-            rrule._until = dt.datetime(2037, 12, 31)
+            rrule._until = dt.datetime(2037, 12, 31)  # type: ignore
         else:
             if events_tz and 'Z' in rrule_param.to_ical().decode():
-                rrule._until = pytz.UTC.localize(
-                    rrule._until).astimezone(events_tz).replace(tzinfo=None)
+                assert isinstance(rrule._until, dt.datetime)  # type: ignore
+                rrule._until = pytz.UTC.localize(  # type: ignore
+                    rrule._until).astimezone(events_tz).replace(tzinfo=None)  # type: ignore
 
             # rrule._until and dtstart could be dt.date or dt.datetime. They
             # need to be the same for comparison
-            testuntil = rrule._until
+            testuntil = rrule._until  # type: ignore
             if (type(dtstart) == dt.date and type(testuntil) == dt.datetime):
                 testuntil = testuntil.date()
             teststart = dtstart
@@ -298,15 +299,15 @@ def expand(vevent, href=''):
                 logger.warning(
                     f'{href}: Unsupported recurrence. UNTIL is before DTSTART.\n'
                     'This event will not be available in khal.')
-                return False
+                return None
 
         if rrule.count() == 0:
             logger.warning(
                 f'{href}: Recurrence defined but will never occur.\n'
                 'This event will not be available in khal.')
-            return False
+            return None
 
-        rrule = map(sanitize_datetime, rrule)
+        rrule = map(sanitize_datetime, rrule)  # type: ignore
 
         logger.debug(f'calculating recurrence dates for {href}, this might take some time.')
 
@@ -362,24 +363,24 @@ def assert_only_one_uid(cal: icalendar.Calendar):
         return True
 
 
-def sanitize(vevent, default_timezone, href='', calendar=''):
+def sanitize(
+    vevent: icalendar.Event,
+    default_timezone: pytz.BaseTzInfo,
+    href: str='',
+    calendar: str='',
+) -> icalendar.Event:
     """
     clean up vevents we do not understand
 
     :param vevent: the vevent that needs to be cleaned
-    :type vevent: icalendar.cal.Event
     :param default_timezone: timezone to apply to start and/or end dates which
          were supposed to be localized but which timezone was not understood
          by icalendar
-    :type timezone: pytz.timezone
     :param href: used for logging to inform user which .ics files are
         problematic
-    :type href: str
     :param calendar: used for logging to inform user which .ics files are
         problematic
-    :type calendar: str
     :returns: clean vevent
-    :rtype: icalendar.cal.Event
     """
     # convert localized datetimes with timezone information we don't
     # understand to the default timezone
@@ -513,7 +514,7 @@ def delete_instance(vevent: icalendar.Event, instance: dt.datetime) -> None:
             vevent.add('RDATE', rdates)
 
 
-def sort_key(vevent: icalendar.Event) -> Tuple[str, float]:
+def sort_key(vevent: icalendar.Event) -> tuple[str, float]:
     """helper function to determine order of VEVENTS
     so that recurrence-id events come after the corresponding rrule event, etc
     :param vevent: icalendar.Event
@@ -547,4 +548,6 @@ def cal_from_ics(ics: str) -> icalendar.Calendar:
             icalendar.vUTCOffset.ignore_exceptions = True
             cal = icalendar.Calendar.from_ical(ics)
             icalendar.vUTCOffset.ignore_exceptions = False
+        else:
+            raise
     return cal

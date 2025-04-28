@@ -26,6 +26,7 @@ if they are large, into their own files
 """
 import datetime as dt
 import re
+from typing import Optional
 
 import urwid
 
@@ -76,7 +77,7 @@ def goto_end_of_line(text):
 class ExtendedEdit(urwid.Edit):
     """A text editing widget supporting some more editing commands"""
 
-    def keypress(self, size, key):
+    def keypress(self, size: tuple[int], key: Optional[str]) -> Optional[str]:
         if key == 'ctrl w':
             self._delete_word()
         elif key == 'ctrl u':
@@ -89,6 +90,8 @@ class ExtendedEdit(urwid.Edit):
             self._goto_end_of_line()
         else:
             return super().keypress(size, key)
+
+        return None
 
     def _delete_word(self):
         """delete word before cursor"""
@@ -121,7 +124,7 @@ class ExtendedEdit(urwid.Edit):
 
 class DateTimeWidget(ExtendedEdit):
 
-    def __init__(self, dateformat, on_date_change=lambda x: None, **kwargs):
+    def __init__(self, dateformat: str, on_date_change=lambda x: None, **kwargs) -> None:
         self.dateformat = dateformat
         self.on_date_change = on_date_change
         super().__init__(wrap='any', **kwargs)
@@ -135,7 +138,8 @@ class DateTimeWidget(ExtendedEdit):
             return None
 
         if (
-                key in ['up', 'down', 'tab', 'shift tab'] or
+                key in ['up', 'down', 'tab', 'shift tab',
+                    'page up', 'page down', 'meta enter'] or
                 (key in ['right'] and self.edit_pos >= len(self.edit_text)) or
                 (key in ['left'] and self.edit_pos == 0)):
             # when leaving the current Widget we check if currently
@@ -165,11 +169,8 @@ class DateTimeWidget(ExtendedEdit):
         except DateConversionError:
             pass
 
-    def set_value(self, new_date):
-        """set a new value for this widget
-
-        :type new_date: datetime.date
-        """
+    def set_value(self, new_date: dt.date):
+        """set a new value for this widget"""
         self.set_edit_text(new_date.strftime(self.dateformat))
 
 
@@ -201,8 +202,9 @@ class TimeWidget(DateTimeWidget):
 
 class Choice(urwid.PopUpLauncher):
     def __init__(
-            self, choices, active, decorate_func=None, overlay_width=32, callback=lambda: None,
-    ):
+        self, choices: list[str], active: str,
+        decorate_func=None, overlay_width: int=32, callback=lambda: None,
+    ) -> None:
         self.choices = choices
         self._callback = callback
         self._decorate = decorate_func or (lambda x: x)
@@ -211,9 +213,7 @@ class Choice(urwid.PopUpLauncher):
 
     def create_pop_up(self):
         pop_up = ChoiceList(self, callback=self._callback)
-        urwid.connect_signal(
-            pop_up, 'close', lambda button: self.close_pop_up(),
-        )
+        urwid.connect_signal(pop_up, 'close', lambda button: self.close_pop_up())
         return pop_up
 
     def get_pop_up_parameters(self):
@@ -235,27 +235,31 @@ class Choice(urwid.PopUpLauncher):
         self._active = val
         self.button = urwid.Button(self._decorate(self._active))
         urwid.PopUpLauncher.__init__(self, self.button)
-        urwid.connect_signal(self.button, 'click',
-                             lambda button: self.open_pop_up())
+        urwid.connect_signal(self.button, 'click', lambda button: self.open_pop_up())
 
 
 class ChoiceList(urwid.WidgetWrap):
     """A pile of Button() widgets, intended to be used with Choice()"""
     signals = ['close']
 
-    def __init__(self, parent, callback=lambda: None):
+    def __init__(self, parent, callback=lambda: None) -> None:
         self.parent = parent
         self._callback = callback
         buttons = []
         for c in parent.choices:
             buttons.append(
-                urwid.Button(parent._decorate(c),
-                             on_press=self.set_choice, user_data=c)
+                button(
+                    parent._decorate(c),
+                    attr_map='popupbg',
+                    focus_map='popupbg focus',
+                    on_press=self.set_choice,
+                    user_data=c,
+                )
             )
 
         pile = NPile(buttons, outermost=True)
         num = [num for num, elem in enumerate(parent.choices) if elem == parent.active][0]
-        pile.set_focus(num)
+        pile.focus_position = num
         fill = urwid.Filler(pile)
         urwid.WidgetWrap.__init__(self, urwid.AttrMap(fill, 'popupbg'))
 
@@ -271,7 +275,7 @@ class SupportsNext:
     _select_last_selectable
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         self.outermost = kwargs.get('outermost', False)
         if 'outermost' in kwargs:
             kwargs.pop('outermost')
@@ -284,14 +288,14 @@ class NextMixin(SupportsNext):
     def _select_first_selectable(self):
         """select our first selectable item (recursivly if that item SupportsNext)"""
         i = self._first_selectable()
-        self.set_focus(i)
+        self.focus_position = i
         if isinstance(self.contents[i][0], SupportsNext):
             self.contents[i][0]._select_first_selectable()
 
     def _select_last_selectable(self):
         """select our last selectable item (recursivly if that item SupportsNext)"""
         i = self._last_selectable()
-        self.set_focus(i)
+        self.focus_position = i
         if isinstance(self._contents[i][0], SupportsNext):
             self.contents[i][0]._select_last_selectable()
 
@@ -318,7 +322,7 @@ class NextMixin(SupportsNext):
             else:
                 for i in range(self.focus_position + 1, len(self._contents)):
                     if self._contents[i][0].selectable():
-                        self.set_focus(i)
+                        self.focus_position = i
                         if isinstance(self._contents[i][0], SupportsNext):
                             self._contents[i][0]._select_first_selectable()
                         break
@@ -330,7 +334,7 @@ class NextMixin(SupportsNext):
             else:
                 for i in range(self.focus_position - 1, 0 - 1, -1):
                     if self._contents[i][0].selectable():
-                        self.set_focus(i)
+                        self.focus_position = i
                         if isinstance(self._contents[i][0], SupportsNext):
                             self._contents[i][0]._select_last_selectable()
                         break
@@ -352,14 +356,14 @@ class NListBox(SupportsNext, urwid.ListBox):
     def _select_first_selectable(self):
         """select our first selectable item (recursivly if that item SupportsNext)"""
         i = self._first_selectable()
-        self.set_focus(i)
+        self.focus_position = i
         if isinstance(self.body[i], SupportsNext):
             self.body[i]._select_first_selectable()
 
     def _select_last_selectable(self):
         """select our last selectable item (recursivly if that item SupportsNext)"""
         i = self._last_selectable()
-        self.set_focus(i)
+        self.focus_position = i
         if isinstance(self.body[i], SupportsNext):
             self.body[i]._select_last_selectable()
 
@@ -394,7 +398,7 @@ class NListBox(SupportsNext, urwid.ListBox):
 
 
 class ValidatedEdit(urwid.WidgetWrap):
-    def __init__(self, *args, EditWidget=ExtendedEdit, validate=False, **kwargs):
+    def __init__(self, *args, EditWidget=ExtendedEdit, validate=False, **kwargs) -> None:
         assert validate
         self._validate_func = validate
         self._original_widget = urwid.AttrMap(EditWidget(*args, **kwargs), 'edit', 'edit focused')
@@ -433,7 +437,8 @@ class ValidatedEdit(urwid.WidgetWrap):
 
     def keypress(self, size, key):
         if (
-                key in ['up', 'down', 'tab', 'shift tab'] or
+                key in ['up', 'down', 'tab', 'shift tab',
+                    'page up', 'page down', 'meta enter'] or
                 (key in ['right'] and self.edit_pos >= len(self.edit_text)) or
                 (key in ['left'] and self.edit_pos == 0)):
             if not self._validate():
@@ -442,7 +447,7 @@ class ValidatedEdit(urwid.WidgetWrap):
 
 
 class PositiveIntEdit(ValidatedEdit):
-    def __init__(self, *args, EditWidget=ExtendedEdit, validate=False, **kwargs):
+    def __init__(self, *args, EditWidget=ExtendedEdit, validate=False, **kwargs) -> None:
         """Variant of Validated Edit that only accepts positive integers."""
         super().__init__(*args, validate=self._unsigned_int, **kwargs)
 
@@ -474,8 +479,8 @@ class DurationWidget(urwid.WidgetWrap):
         seconds = int(seconds % 60)
         return days, hours, minutes, seconds
 
-    def __init__(self, dt):
-        days, hours, minutes, seconds = self._convert_timedelta(dt)
+    def __init__(self, timedelta: dt.timedelta) -> None:
+        days, hours, minutes, seconds = self._convert_timedelta(timedelta)
 
         self.days_edit = ValidatedEdit(
             edit_text=str(days), validate=self.unsigned_int, align='right')
@@ -499,7 +504,7 @@ class DurationWidget(urwid.WidgetWrap):
 
         urwid.WidgetWrap.__init__(self, self.columns)
 
-    def get_timedelta(self):
+    def get_timedelta(self) -> dt.timedelta:
         return dt.timedelta(
             seconds=int(self.seconds_edit.get_edit_text()) +
             int(self.minutes_edit.get_edit_text()) * 60 +
@@ -511,7 +516,7 @@ class AlarmsEditor(urwid.WidgetWrap):
 
     class AlarmEditor(urwid.WidgetWrap):
 
-        def __init__(self, alarm, delete_handler):
+        def __init__(self, alarm: tuple[dt.timedelta, str], delete_handler) -> None:
             duration, description = alarm
             if duration.total_seconds() > 0:
                 direction = 'after'
@@ -529,7 +534,7 @@ class AlarmsEditor(urwid.WidgetWrap):
                 (21, self.duration),
                 (14, urwid.Padding(self.direction, right=1)),
                 self.description,
-                (10, urwid.Button('Delete', on_press=delete_handler, user_data=self)),
+                (10, button('Delete', on_press=delete_handler, user_data=self)),
             ])
 
             urwid.WidgetWrap.__init__(self, self.columns)
@@ -542,20 +547,27 @@ class AlarmsEditor(urwid.WidgetWrap):
                 prefix = 1
             return (prefix * self.duration.get_timedelta(), self.description.get_edit_text())
 
-    def __init__(self, event):
+    def __init__(self, event) -> None:
         self.event = event
 
         self.pile = NPile(
             [urwid.Text('Alarms:')] +
             [self.AlarmEditor(a, self.remove_alarm) for a in event.alarms] +
-            [urwid.Columns([(12, urwid.Button('Add', on_press=self.add_alarm))])])
+            [urwid.Columns([(12, button('Add', on_press=self.add_alarm))])])
 
         urwid.WidgetWrap.__init__(self, self.pile)
 
-    def add_alarm(self, button):
+
+    def clear(self) -> None:
+        """clear the alarm list"""
+        self.pile.contents.clear()
+
+    def add_alarm(self, button, timedelta: Optional[dt.timedelta] = None):
+        if timedelta is None:
+            timedelta = dt.timedelta(0)
         self.pile.contents.insert(
             len(self.pile.contents) - 1,
-            (self.AlarmEditor((dt.timedelta(0), self.event.summary), self.remove_alarm),
+            (self.AlarmEditor((timedelta, self.event.summary), self.remove_alarm),
              ('weight', 1)))
 
     def remove_alarm(self, button, editor):
@@ -577,30 +589,32 @@ class AlarmsEditor(urwid.WidgetWrap):
 
 
 class FocusLineBoxWidth(urwid.WidgetDecoration, urwid.WidgetWrap):
-    def __init__(self, widget):
-        hline = urwid.Divider('─')
-        hline_focus = urwid.Divider('━')
-        self._vline = urwid.SolidFill('│')
-        self._vline_focus = urwid.SolidFill('┃')
+    def __init__(self, widget) -> None:
+        # we cheat here with the attrs, if we use thick dividers we apply the
+        # focus attr group. We probably should fix this in render()
+        hline = urwid.AttrMap(urwid.Divider('─'), 'frame')
+        hline_focus = urwid.AttrMap(urwid.Divider('━'), 'frame focus')
+        self._vline = urwid.AttrMap(urwid.SolidFill('│'), 'frame')
+        self._vline_focus = urwid.AttrMap(urwid.SolidFill('┃'), 'frame focus')
         self._topline = urwid.Columns([
-            ('fixed', 1, urwid.Text('┌')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┌'), 'frame')),
             hline,
-            ('fixed', 1, urwid.Text('┐')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┐'), 'frame')),
         ])
         self._topline_focus = urwid.Columns([
-            ('fixed', 1, urwid.Text('┏')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┏'), 'frame focus')),
             hline_focus,
-            ('fixed', 1, urwid.Text('┓')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┓'), 'frame focus')),
         ])
         self._bottomline = urwid.Columns([
-            ('fixed', 1, urwid.Text('└')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('└'), 'frame')),
             hline,
-            ('fixed', 1, urwid.Text('┘')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┘'), 'frame')),
         ])
         self._bottomline_focus = urwid.Columns([
-            ('fixed', 1, urwid.Text('┗')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┗'), 'frame focus')),
             hline_focus,
-            ('fixed', 1, urwid.Text('┛')),
+            ('fixed', 1, urwid.AttrMap(urwid.Text('┛'), 'frame focus')),
         ])
         self._middle = urwid.Columns(
             [('fixed', 1, self._vline), widget, ('fixed', 1, self._vline)],
@@ -630,7 +644,7 @@ class FocusLineBoxWidth(urwid.WidgetDecoration, urwid.WidgetWrap):
 
 
 class FocusLineBoxColor(urwid.WidgetDecoration, urwid.WidgetWrap):
-    def __init__(self, widget):
+    def __init__(self, widget) -> None:
         hline = urwid.Divider('─')
         self._vline = urwid.AttrMap(urwid.SolidFill('│'), 'frame')
         self._topline = urwid.AttrMap(
@@ -673,7 +687,7 @@ class FocusLineBoxColor(urwid.WidgetDecoration, urwid.WidgetWrap):
 
 
 class FocusLineBoxTop(urwid.WidgetDecoration, urwid.WidgetWrap):
-    def __init__(self, widget):
+    def __init__(self, widget) -> None:
         topline = urwid.AttrMap(urwid.Divider('━'), 'frame')
         self._all = urwid.Pile([('flow', topline), widget], focus_item=1)
         urwid.WidgetWrap.__init__(self, self._all)
@@ -693,3 +707,30 @@ linebox = {
     'width': FocusLineBoxWidth,
     'False': urwid.WidgetPlaceholder,
 }
+
+def button(*args,
+           attr_map: str='button', focus_map='button focus',
+           padding_left=0, padding_right=0,
+           **kwargs):
+    """wrapping an urwid button in attrmap and padding"""
+    button_ = urwid.Button(*args, **kwargs)
+    button_ = urwid.AttrMap(button_, attr_map=attr_map, focus_map=focus_map)
+    button_ = urwid.Padding(button_, left=padding_left, right=padding_right)
+    return button_
+
+
+class CAttrMap(urwid.AttrMap):
+    """A variant of AttrMap that exposes all properties of the original widget"""
+    def __getattr__(self, name):
+        return getattr(self.original_widget, name)
+
+
+class CPadding(urwid.Padding):
+    """A variant of Patting that exposes some properties of the original widget"""
+    @property
+    def active(self):
+        return self.original_widget.active
+
+    @property
+    def changed(self):
+        return self.original_widget.changed

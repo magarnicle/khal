@@ -3,13 +3,14 @@ Based off https://github.com/pimutils/python-vdir, which is itself based off
 vdirsyncer.
 '''
 
+import contextlib
 import errno
 import os
+import tempfile
 import uuid
+from collections.abc import Iterable
 from hashlib import sha1
-from typing import IO, Callable, Dict, Iterable, Optional, Protocol, Tuple, Type
-
-from atomicwrites import atomic_write
+from typing import IO, Callable, Optional, Protocol
 
 from ..custom_types import PathLike, SupportsRaw
 
@@ -29,7 +30,7 @@ class cached_property:
     instances' methods.
     '''
 
-    def __init__(self, fget, doc=None):
+    def __init__(self, fget, doc=None) -> None:
         self.__name__ = fget.__name__
         self.__module__ = fget.__module__
         self.__doc__ = doc or fget.__doc__
@@ -94,7 +95,7 @@ def get_etag_from_file(f) -> str:
 
 
 class VdirError(IOError):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         for key, value in kwargs.items():
             if getattr(self, key, object()) not in [None, '']:  # pragma: no cover
                 raise TypeError(f'Invalid argument: {key}')
@@ -120,7 +121,7 @@ class AlreadyExistingError(VdirError):
 
 
 class Item:
-    def __init__(self, raw: str):
+    def __init__(self, raw: str) -> None:
         assert isinstance(raw, str)
         self.raw = raw
 
@@ -141,11 +142,32 @@ class Item:
         return uid or None
 
 
+@contextlib.contextmanager
+def atomic_write(dest, overwrite=False):
+    fd, src = tempfile.mkstemp(prefix=os.path.basename(dest), dir=os.path.dirname(dest))
+    file = os.fdopen(fd, mode='wb')
+
+    try:
+        yield file
+    except Exception:
+        os.unlink(src)
+        raise
+    else:
+        file.flush()
+        file.close()
+
+        if overwrite:
+            os.rename(src, dest)
+        else:
+            os.link(src, dest)
+            os.unlink(src)
+
+
 class VdirBase:
     item_class = Item
     default_mode = 0o750
 
-    def __init__(self, path: str, fileext: str, encoding: str='utf-8'):
+    def __init__(self, path: str, fileext: str, encoding: str='utf-8') -> None:
         if not os.path.isdir(path):
             raise CollectionNotFoundError(path)
         self.path = path
@@ -167,7 +189,7 @@ class VdirBase:
                 yield cls(path=collection_path, **kwargs)
 
     @classmethod
-    def create(cls, collection_name: PathLike, **kwargs: PathLike) -> Dict[str, PathLike]:
+    def create(cls, collection_name: PathLike, **kwargs: PathLike) -> dict[str, PathLike]:
         kwargs = dict(kwargs)
         path = kwargs['path']
 
@@ -186,13 +208,13 @@ class VdirBase:
     def _get_href(self, uid: Optional[str]) -> str:
         return _generate_href(uid) + self.fileext
 
-    def list(self) -> Iterable[Tuple[str, str]]:
+    def list(self) -> Iterable[tuple[str, str]]:
         for fname in os.listdir(self.path):
             fpath = os.path.join(self.path, fname)
             if os.path.isfile(fpath) and fname.endswith(self.fileext):
                 yield fname, get_etag_from_file(fpath)
 
-    def get(self, href: str) -> Tuple[Item, str]:
+    def get(self, href: str) -> tuple[Item, str]:
         fpath = self._get_filepath(href)
         try:
             with open(fpath, 'rb') as f:
@@ -206,7 +228,7 @@ class VdirBase:
             else:
                 raise
 
-    def upload(self, item: SupportsRaw) -> Tuple[str, str]:
+    def upload(self, item: SupportsRaw) -> tuple[str, str]:
         if not isinstance(item.raw, str):
             raise TypeError('item.raw must be a unicode string.')
 
@@ -225,11 +247,11 @@ class VdirBase:
                 raise
         return href, etag
 
-    def _upload_impl(self, item: SupportsRaw, href: str) -> Tuple[str, str]:
+    def _upload_impl(self, item: SupportsRaw, href: str) -> tuple[str, str]:
         fpath = self._get_filepath(href)
         try:
             f: IO
-            with atomic_write(fpath, mode='wb', overwrite=False) as f:
+            with atomic_write(fpath, overwrite=False) as f:
                 f.write(item.raw.encode(self.encoding))
                 return fpath, get_etag_from_file(f)
         except OSError as e:
@@ -249,7 +271,7 @@ class VdirBase:
         if not isinstance(item.raw, str):
             raise TypeError('item.raw must be a unicode string.')
 
-        with atomic_write(fpath, mode='wb', overwrite=True) as f:
+        with atomic_write(fpath, overwrite=True) as f:
             f.write(item.raw.encode(self.encoding))
             etag = get_etag_from_file(f)
 
@@ -279,12 +301,12 @@ class VdirBase:
         value = value or ''
         assert isinstance(value, str)
         fpath = os.path.join(self.path, key)
-        with atomic_write(fpath, mode='wb', overwrite=True) as f:
+        with atomic_write(fpath, overwrite=True) as f:
             f.write(value.encode(self.encoding))
 
 
 class Color:
-    def __init__(self, x: str):
+    def __init__(self, x: str) -> None:
         if not x:
             raise ValueError('Color is false-ish.')
         if not x.startswith('#'):
@@ -295,7 +317,7 @@ class Color:
         self.raw: str = x.upper()
 
     @cached_property
-    def rgb(self) -> Tuple[int, int, int]:
+    def rgb(self) -> tuple[int, int, int]:
         x = self.raw
 
         r = x[1:3]
@@ -308,8 +330,8 @@ class Color:
             raise ValueError(f'Unable to parse color value: {self.raw}')
 
 
-class ColorMixin():
-    color_type: Type[Color] = Color
+class ColorMixin:
+    color_type: type[Color] = Color
 
     def get_color(self: HasMetaProtocol) -> Optional[str]:
         try:

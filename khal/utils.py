@@ -23,14 +23,22 @@
 
 
 import datetime as dt
+import json
 import random
 import re
 import string
 from calendar import month_abbr, timegm
+from collections.abc import Iterator
 from textwrap import wrap
-from typing import Iterator, List, Optional, Tuple
+from typing import Optional
 
+import icalendar
 import pytz
+import urwid
+from click import style
+
+from .parse_datetime import guesstimedeltafstr
+from .terminal import get_color
 
 
 def generate_random_uid() -> str:
@@ -51,7 +59,7 @@ ansi_sgr = re.compile(r'\x1b\['
                       'm')
 
 
-def find_last_reset(string: str) -> Tuple[int, int, str]:
+def find_last_reset(string: str) -> tuple[int, int, str]:
     for match in re.finditer(ansi_reset, string):  # noqa B007: this is actually used below.
         pass
     try:
@@ -60,7 +68,7 @@ def find_last_reset(string: str) -> Tuple[int, int, str]:
         return -2, -1, ''
 
 
-def find_last_sgr(string: str) -> Tuple[int, int, str]:
+def find_last_sgr(string: str) -> tuple[int, int, str]:
     for match in re.finditer(ansi_sgr, string):  # noqa B007: this is actually used below.
         pass
     try:
@@ -78,7 +86,7 @@ def find_unmatched_sgr(string: str) -> Optional[str]:
         return None
 
 
-def color_wrap(text: str, width: int = 70) -> List[str]:
+def color_wrap(text: str, width: int = 70) -> list[str]:
     """A variant of wrap that takes SGR codes (somewhat) into account.
 
     This doesn't actually adjust the length, but makes sure that
@@ -96,7 +104,7 @@ def color_wrap(text: str, width: int = 70) -> List[str]:
     return lines
 
 
-def get_weekday_occurrence(day: dt.date) -> Tuple[int, int]:
+def get_weekday_occurrence(day: dt.date) -> tuple[int, int]:
     """Calculate how often this weekday has already occurred in a given month.
 
     :returns: weekday (0=Monday, ..., 6=Sunday), occurrence
@@ -112,7 +120,7 @@ def get_month_abbr_len() -> int:
     return max(len(month_abbr[i]) for i in range(1, 13)) + 1
 
 
-def localize_strip_tz(dates: List[dt.datetime], timezone: dt.tzinfo) -> Iterator[dt.datetime]:
+def localize_strip_tz(dates: list[dt.datetime], timezone: dt.tzinfo) -> Iterator[dt.datetime]:
     """converts a list of dates to timezone, than removes tz info"""
     for one_date in dates:
         if getattr(one_date, 'tzinfo', None) is not None:
@@ -174,13 +182,97 @@ def relative_timedelta_str(day: dt.date) -> str:
     if count > 1:
         unit += 's'
 
-    return '{approx}{count} {unit} {direction}'.format(
-        approx=approx,
-        count=count,
-        unit=unit,
-        direction=direction,
-    )
+    return f'{approx}{count} {unit} {direction}'
 
 
-def get_wrapped_text(widget):
+def get_wrapped_text(widget: urwid.AttrMap) -> str:
     return widget.original_widget.get_edit_text()
+
+
+def human_formatter(format_string, width=None, colors=True):
+    """Create a formatter that formats events to be human readable."""
+    def fmt(rows):
+        single = isinstance(rows, dict)
+        if single:
+            rows = [rows]
+        results = []
+        for row in rows:
+            if 'calendar-color' in row:
+                row['calendar-color'] = get_color(row['calendar-color'])
+
+            s = format_string.format(**row)
+
+            if colors:
+                s += style('', reset=True)
+
+            if width:
+                results += color_wrap(s, width)
+            else:
+                results.append(s)
+        if single:
+            return results[0]
+        else:
+            return results
+    return fmt
+
+
+CONTENT_ATTRIBUTES = ['start', 'start-long', 'start-date', 'start-date-long',
+                      'start-time', 'end', 'end-long', 'end-date', 'end-date-long', 'end-time',
+                      'duration', 'start-full', 'start-long-full', 'start-date-full',
+                      'start-date-long-full', 'start-time-full', 'end-full', 'end-long-full',
+                      'end-date-full', 'end-date-long-full', 'end-time-full', 'duration-full',
+                      'start-style', 'end-style', 'to-style', 'start-end-time-style',
+                      'end-necessary', 'end-necessary-long', 'repeat-symbol', 'repeat-pattern',
+                      'title', 'organizer', 'description', 'location', 'all-day', 'categories',
+                      'uid', 'url', 'calendar', 'calendar-color', 'status', 'cancelled']
+
+
+def json_formatter(fields):
+    """Create a formatter that formats events in JSON."""
+
+    if len(fields) == 1 and fields[0] == 'all':
+        fields = CONTENT_ATTRIBUTES
+
+    def fmt(rows):
+        single = isinstance(rows, dict)
+        if single:
+            rows = [rows]
+
+        filtered = []
+        for row in rows:
+            f = dict(filter(lambda e: e[0] in fields and e[0] in CONTENT_ATTRIBUTES, row.items()))
+
+            if f.get('repeat-symbol', '') != '':
+                f["repeat-symbol"] = f["repeat-symbol"].strip()
+            if f.get('status', '') != '':
+                f["status"] = f["status"].strip()
+            if f.get('cancelled', '') != '':
+                f["cancelled"] = f["cancelled"].strip()
+
+            filtered.append(f)
+
+        results = [json.dumps(filtered, ensure_ascii=False)]
+
+        if single:
+            return results[0]
+        else:
+            return results
+    return fmt
+
+
+def alarmstr2trigger(alarms: str) -> Iterator[dt.timedelta]:
+    """convert a comma separated list of alarm strings to dt.timedelta"""
+    for alarm in alarms.split(","):
+        alarm = alarm.strip()
+        alarm_trig = -1 * guesstimedeltafstr(alarm)
+        yield alarm_trig
+
+
+def str2alarm(alarms: str, description: str) -> Iterator[icalendar.Alarm]:
+    """convert a comma separated list of alarm strings to icalendar.Alarm"""
+    for alarm_trig in alarmstr2trigger(alarms):
+        new_alarm = icalendar.Alarm()
+        new_alarm.add('ACTION', 'DISPLAY')
+        new_alarm.add('TRIGGER', alarm_trig)
+        new_alarm.add('DESCRIPTION', description)
+        yield new_alarm

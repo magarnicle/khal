@@ -1,6 +1,6 @@
 import datetime as dt
 import os
-from typing import List, Optional, Protocol, Tuple, TypedDict, Union
+from typing import Literal, Optional, Protocol, TypedDict, Union
 
 import pytz
 
@@ -12,6 +12,7 @@ class CalendarConfiguration(TypedDict):
     color: str
     priority: int
     ctype: str
+    addresses: str
 
 
 class LocaleConfiguration(TypedDict):
@@ -38,7 +39,7 @@ class SupportsRaw(Protocol):
 
 
 # set this to TypeAlias once we support that python version (PEP613)
-EventTuple = Tuple[
+EventTuple = tuple[
     str,
     str,
     Union[dt.date, dt.datetime],
@@ -68,7 +69,7 @@ class EventCreationTypes(TypedDict):
     description: str
     allday: bool
     location: Optional[str]
-    categories: Optional[Union[str, List[str]]]
+    categories: Optional[Union[str, list[str]]]
     repeat: Optional[str]
     until: str
     alarms: str
@@ -77,3 +78,6 @@ class EventCreationTypes(TypedDict):
 
 
 PathLike = Union[str, os.PathLike]
+
+WeekNumbersType = Literal['left', 'right', False]
+MonthDisplayType = Literal['firstday', 'firstfullweek']

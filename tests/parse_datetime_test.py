@@ -35,8 +35,8 @@ def _construct_event(info, locale,
                      location=None, categories=None, repeat=None, until=None,
                      alarm=None, **kwargs):
     info = eventinfofstr(' '.join(info), locale,
-                         dt.timedelta(days=1),
-                         dt.timedelta(hours=1),
+                         default_event_duration=dt.timedelta(hours=1),
+                         default_dayevent_duration=dt.timedelta(days=1),
                          adjust_reasonably=True,
                          )
     if description is not None:
@@ -193,12 +193,29 @@ class TestGuessTimedeltafstr:
     def test_seconds(self):
         assert dt.timedelta(seconds=10) == guesstimedeltafstr('10s')
 
+    def test_single_plus(self):
+        assert dt.timedelta(minutes=10) == guesstimedeltafstr('+10m')
+
+    def test_seconds_plus(self):
+        assert dt.timedelta(seconds=10) == guesstimedeltafstr('+10s')
+
+    def test_days_plus(self):
+        assert dt.timedelta(days=10) == guesstimedeltafstr('+10days')
+
     def test_negative(self):
         assert dt.timedelta(minutes=-10) == guesstimedeltafstr('-10m')
 
     def test_multi(self):
         assert dt.timedelta(days=1, hours=-3, minutes=10) == \
             guesstimedeltafstr(' 1d -3H 10min ')
+
+    def test_multi_plus(self):
+        assert dt.timedelta(days=1, hours=3, minutes=10) == \
+            guesstimedeltafstr(' 1d +3H 10min ')
+
+    def test_multi_plus_minus(self):
+        assert dt.timedelta(days=0, hours=21, minutes=10) == \
+            guesstimedeltafstr('+1d -3H 10min ')
 
     def test_multi_nospace(self):
         assert dt.timedelta(days=1, hours=-3, minutes=10) == \

@@ -34,7 +34,7 @@ try:
 except ModuleNotFoundError:
     from validate import Validator
 
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from .exceptions import CannotParseConfigFileError, InvalidSettingsError, NoConfigFile
 from .utils import (
@@ -57,28 +57,16 @@ SPECPATH = os.path.join(os.path.dirname(__file__), 'khal.spec')
 def find_configuration_file() -> Optional[str]:
     """Return the configuration filename.
 
-    This function builds the list of paths known by khal and then return the
-    first one which exists. The first paths searched are the ones described in
-    the XDG Base Directory Standard, e.g. ~/.config/khal/config, additionally
-    ~/.config/khal/khal.conf is searched (deprecated).
+    Check all the paths for configuration files defined in the XDG Base Directory
+    Standard, and return the first one that exists, if any.
+
+    For the common case, this will return ~/.config/khal/config, assuming that it
+    exists.
     """
-    DEFAULT_PATH = __productname__
 
-    paths = []
-    paths = [os.path.join(path, os.path.join(DEFAULT_PATH, 'config'))
-             for path in xdg.BaseDirectory.xdg_config_dirs]
-    for path in paths:
+    for dir in xdg.BaseDirectory.xdg_config_dirs:
+        path = os.path.join(dir, __productname__, 'config')
         if os.path.exists(path):
-            return path
-
-    # remove this part for v0.11.0
-    for path in paths:
-        if os.path.exists(path):
-            logger.warning(
-                f'Deprecation Warning: configuration file path `{path}` will '
-                'not be supported from v0.11.0 onwards, please move it to '
-                f'`{xdg.BaseDirectory.xdg_config_dirs[0]}/khal/config`.'
-            )
             return path
 
     return None
@@ -153,20 +141,18 @@ def get_config(
     for section, value in extras:
         if section == ():
             logger.warning(f'unknown section "{value}" in config file')
+        elif section == ('palette',):
+            # we don't validate the palette section, because there is no way to
+            # automatically extract valid attributes from the ui module
+            continue
         else:
             section = sectionize(section)
             logger.warning(
                 f'unknown key or subsection "{value}" in section "{section}"')
-
-            deprecated = [{'value': 'default_command', 'section': 'default'}]
-            for d in deprecated:
-                if (value == d['value']) and (section == d['section']):
-                    logger.warning(f'Key "{value}" in section "{section}" was '
-                                   'deprecated. See the FAQ to find out when and why!')
     return user_config
 
 
-def sectionize(sections: List[str], depth: int=1) -> str:
+def sectionize(sections: list[str], depth: int=1) -> str:
     """converts list of string into [list][[of]][[[strings]]]"""
     this_part = depth * '[' + sections[0] + depth * ']'
     if len(sections) > 1:

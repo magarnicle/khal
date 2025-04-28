@@ -40,10 +40,14 @@ class TestSettings:
         )
         comp_config = {
             'calendars': {
-                'home': {'path': os.path.expanduser('~/.calendars/home/'),
-                         'readonly': False, 'color': None, 'priority': 10, 'type': 'calendar'},
-                'work': {'path': os.path.expanduser('~/.calendars/work/'),
-                         'readonly': False, 'color': None, 'priority': 10, 'type': 'calendar'},
+                'home': {
+                    'path': os.path.expanduser('~/.calendars/home/'), 'readonly': False,
+                    'color': None, 'priority': 10, 'type': 'calendar', 'addresses': [''],
+                },
+                'work': {
+                    'path': os.path.expanduser('~/.calendars/work/'), 'readonly': False,
+                    'color': None, 'priority': 10, 'type': 'calendar', 'addresses': [''],
+                },
             },
             'sqlite': {'path': os.path.expanduser('~/.local/share/khal/khal.db')},
             'locale': LOCALE_BERLIN,
@@ -52,9 +56,12 @@ class TestSettings:
                 'print_new': 'False',
                 'highlight_event_days': False,
                 'timedelta': dt.timedelta(days=2),
-                'default_event_duration': dt.timedelta(days=1),
-                'default_dayevent_duration': dt.timedelta(hours=1),
+                'default_event_duration': dt.timedelta(hours=1),
+                'default_dayevent_duration': dt.timedelta(days=1),
+                'default_event_alarm': dt.timedelta(0),
+                'default_dayevent_alarm': dt.timedelta(0),
                 'show_all_days': False,
+                'enable_mouse': True,
             }
         }
         for key in comp_config:
@@ -78,10 +85,10 @@ class TestSettings:
             'calendars': {
                 'home': {'path': os.path.expanduser('~/.calendars/home/'),
                          'color': 'dark green', 'readonly': False, 'priority': 20,
-                         'type': 'calendar'},
+                         'type': 'calendar', 'addresses': ['']},
                 'work': {'path': os.path.expanduser('~/.calendars/work/'),
                          'readonly': True, 'color': None, 'priority': 10,
-                         'type': 'calendar'}},
+                         'type': 'calendar', 'addresses': ['user@example.com']}},
             'sqlite': {'path': os.path.expanduser('~/.local/share/khal/khal.db')},
             'locale': {
                 'local_timezone': get_localzone(),
@@ -100,10 +107,12 @@ class TestSettings:
                 'print_new': 'False',
                 'highlight_event_days': False,
                 'timedelta': dt.timedelta(days=2),
-                'default_event_duration': dt.timedelta(days=1),
-                'default_dayevent_duration': dt.timedelta(hours=1),
-
-                'show_all_days': False
+                'default_event_duration': dt.timedelta(hours=1),
+                'default_dayevent_duration': dt.timedelta(days=1),
+                'show_all_days': False,
+                'enable_mouse': True,
+                'default_event_alarm': dt.timedelta(0),
+                'default_dayevent_alarm': dt.timedelta(0),
             }
         }
         for key in comp_config:

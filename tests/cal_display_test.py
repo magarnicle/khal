@@ -40,11 +40,11 @@ def test_str_week():
     assert str_week(week, bday) == ' 6  7 \x1b[7m 8\x1b[0m  9 10 11 12 13 '
 
 
-class testCollection():
-    def __init__(self):
-        self._calendars = {}
+class testCollection:
+    def __init__(self) -> None:
+        self._calendars : dict[str, dict]= {}
 
-    def addCalendar(self, name, color, priority):
+    def addCalendar(self, name: str , color: str, priority: int) -> None:
         self._calendars[name] = {'color': color, 'priority': priority}
 
 

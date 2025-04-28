@@ -25,8 +25,9 @@ import glob
 import logging
 import os
 import pathlib
+from collections.abc import Iterable
 from os.path import expanduser, expandvars, join
-from typing import Callable, Iterable, Literal, Optional, Union
+from typing import Callable, Literal, Optional, Union
 
 import pytz
 import xdg
@@ -69,11 +70,10 @@ def is_timedelta(string: str) -> dt.timedelta:
         raise VdtValueError(f"Invalid timedelta: {string}")
 
 
-def weeknumber_option(option: str) -> Union[str, Literal[False]]:
+def weeknumber_option(option: str) -> Union[Literal['left', 'right'], Literal[False]]:
     """checks if *option* is a valid value
 
     :param option: the option the user set in the config file
-    :type option: str
     :returns: 'off', 'left', 'right' or False
     """
     option = option.lower()
@@ -89,11 +89,10 @@ def weeknumber_option(option: str) -> Union[str, Literal[False]]:
             "'off', 'left' or 'right'")
 
 
-def monthdisplay_option(option: str) -> str:
+def monthdisplay_option(option: str) -> Literal['firstday', 'firstfullweek']:
     """checks if *option* is a valid value
 
     :param option: the option the user set in the config file
-    :returns: firstday, firstfullweek
     """
     option = option.lower()
     if option == 'firstday':
@@ -215,6 +214,17 @@ def get_vdir_type(_: str) -> str:
     # TODO implement
     return 'calendar'
 
+def validate_palette_entry(attr, definition: str) -> bool:
+    if len(definition) not in (2, 3, 5):
+        logging.error('Invalid color definition for %s: %s, must be of length, 2, 3, or 5',
+                      attr, definition)
+        return False
+    if (definition[0] not in COLORS and definition[0] != '') or \
+            (definition[1] not in COLORS and definition[1] != ''):
+        logging.error('Invalid color definition for %s: %s, must be one of %s',
+                      attr, definition, COLORS.keys())
+        return False
+    return True
 
 def config_checks(
     config,
@@ -263,3 +273,11 @@ def config_checks(
         if config['calendars'][calendar]['color'] == 'auto':
             config['calendars'][calendar]['color'] = \
                 _get_color_from_vdir(config['calendars'][calendar]['path'])
+
+    # check palette settings
+    valid_palette = True
+    for attr in config.get('palette', []):
+        valid_palette = valid_palette and validate_palette_entry(attr, config['palette'][attr])
+    if not valid_palette:
+        logger.fatal('Invalid palette entry')
+        raise InvalidSettingsError()

@@ -7,12 +7,76 @@ Package maintainers and users who have to manually update their installation
 may want to subscribe to `GitHub's tag feed
 <https://github.com/geier/khal/tags.atom>`_.
 
+0.13.1
+======
+unreleased
+
+* CHANGE the ``pkg_resources`` library is no longer required.
+
+0.13.0
+======
+2025-04-15
+
+* UPDATED DEPENDENCY icalendar >= 6.0.0 is now required
+* UPDATED DEPENDENCY setuptools >= 77 is now required
+
+0.12.0
+======
+2025-04-14
+
+* FIX Don't install tests module.
+* DROPPED support for python versions < 3.9.
+
+0.11.4
+======
+2025-04-10
+
+* UPDATED REQUIREMENT urwid is now required >= 2.6.15
+* NEW REQUIREMENT for tests on python >= 3.12: pkg_resources
+* optimization in ikhal when editing events in the far future or past
+* FIX an issue in ikhal with updating the view of the event list after editing
+  an event
+* NEW properties of ikhal themes (dark and light) can now be overriden from the
+  config file (via the new [palette] section, check the documenation)
+* NEW timedelta strings can now have a leading ``+``, e.g. ``+1d``
+* NEW Add ``--json`` option to output event data as JSON objects
+* NEW Add default alarms configuration option
+* FIX defaults for ``default_event_duration`` and ``default_dayevent_duration``
+  where mixed up, ``default_dayevent_duration`` is the default for all-day events
+* NEW event format option ``status-symbol`` which represents the status of an
+  event with a symbol (e.g. ``✓`` for confirmed, ``✗`` for cancelled, ``?`` for
+  tentative)
+* NEW event format option ``partstat-symbol`` which represents the participation
+  status of an event with a symbol (e.g. ``✓`` for accepted, ``✗`` for declined,
+  ``?`` for tentative); partication status is shown for the email addresses
+  configured for the event's calendar
+* NEW support for color theme, command, and formatter plugins
+* FIX an issue where ikhal would forget changes to time or date fields if you
+  left the field with page up/down or meta+enter
+* NEW support python 3.13
+* CHANGE various UI improvments to ikhal.
+* FIX Deleting multiple of instances of a recurring event in ikhal
+* NEW Add ``enable_mouse`` configuration option.
+* CHANGE the ``atomicwrites`` library is no longer required.
+
+0.11.3
+======
+2024-02-12
+
+* FIX support urwid 2.4.2
 
 0.11.2
 ======
-not released yet
+2023-06-07
 
 * FIX khal `at` also uses `event_format` not `agenda_event_format`
+* FIX duplicating an event using `p` in ikhal
+* NEW Add ability to change the minimum number of months displayed with
+  `min_calendar_display`
+* FIX ikhal don't crash when jumping long distances in time
+* FIX do not use urwid's private methods, would crash with latest urwid version
+* FIX light colorscheme in ikhal, would crash with recent urwid versions
+* FIX better error messages when we cannot import an event
 
 0.11.1
 ======
