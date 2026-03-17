@@ -568,6 +568,14 @@ class Event:
         return alarmstr
 
     @property
+    def _alarm_time_str(self) -> str:
+        if self.alarms:
+            alarmstr = ', '.join(map(str, [self.start + alarm[0] for alarm in self.alarms])).rstrip(", ")
+        else:
+            alarmstr = ''
+        return alarmstr
+
+    @property
     def _status_str(self) -> str:
         if self.status == 'CANCELLED':
             statusstr = self.symbol_strings['cancelled']
@@ -722,6 +730,7 @@ class Event:
         attributes["repeat-symbol"] = self._recur_str
         attributes["repeat-pattern"] = self.recurpattern
         attributes["alarm-symbol"] = self._alarm_str
+        attributes["alarm-times"] = self._alarm_time_str
         attributes["status-symbol"] = self._status_str
         attributes["partstat-symbol"] = self._partstat_str
         attributes["title"] = self.summary

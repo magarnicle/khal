@@ -295,7 +295,7 @@ bold_for_light_color = boolean(default=True)
 # ignored in `ikhal`, where events will always be shown in the color of the
 # calendar they belong to.
 # The syntax is the same as for :option:`--format`.
-agenda_event_format = string(default='{calendar-color}{cancelled}{start-end-time-style} {title}{repeat-symbol}{alarm-symbol}{description-separator}{description}{reset}')
+agenda_event_format = string(default='{calendar-color}{cancelled}{start-end-time-style} {title}{repeat-symbol}{alarm-symbol}{alarm-times}{description-separator}{description}{reset}')
 
 # Specifies how each *day header* is formatted.
 agenda_day_format = string(default='{bold}{name}, {date-long}{reset}')
@@ -310,7 +310,7 @@ monthdisplay = monthdisplay(default='firstday')
 # but :command:`list` and :command:`calendar`. It is therefore probably a
 # sensible choice to include the start- and end-date.
 # The syntax is the same as for :option:`--format`.
-event_format = string(default='{calendar-color}{cancelled}{start}-{end} {title}{repeat-symbol}{alarm-symbol}{description-separator}{description}{reset}')
+event_format = string(default='{calendar-color}{cancelled}{start}-{end} {title}{repeat-symbol}{alarm-symbol}{alarm-times}{description-separator}{description}{reset}')
 
 # Minimum number of months displayed by calendar command
 # default is 3 months
